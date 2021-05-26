@@ -24,7 +24,7 @@
     <item>
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
-       <number>1</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="tab">
        <attribute name="title">
@@ -307,7 +307,7 @@
          <item row="2" column="0">
           <widget class="QLabel" name="label_8">
            <property name="text">
-            <string>Step</string>
+            <string>Jumlah Step</string>
            </property>
           </widget>
          </item>
@@ -389,6 +389,20 @@
    </property>
   </action>
  </widget>
+ <tabstops>
+  <tabstop>tabWidget</tabstop>
+  <tabstop>inputStartF</tabstop>
+  <tabstop>inputStopF</tabstop>
+  <tabstop>inputPoint</tabstop>
+  <tabstop>btnRADAR</tabstop>
+  <tabstop>cmbxPort</tabstop>
+  <tabstop>cmbxBaudrate</tabstop>
+  <tabstop>btnARD</tabstop>
+  <tabstop>inputStartD</tabstop>
+  <tabstop>inputStopD</tabstop>
+  <tabstop>inputStep</tabstop>
+  <tabstop>btnGetData</tabstop>
+ </tabstops>
  <resources/>
  <connections/>
 </ui>

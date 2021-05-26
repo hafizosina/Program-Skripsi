@@ -3,11 +3,11 @@ import matplotlib
 import random
 import pandas as pd
 import numpy as np
+import math
 
-from PyQt5 import QtWidgets, QtCore, uic
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QMenu, QVBoxLayout, QSizePolicy, QMessageBox,
-							 QWidget, QPushButton)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt5 import QtWidgets, uic
+from PyQt5.QtWidgets import QSizePolicy
+from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -23,41 +23,22 @@ from arduino import Arduino, getPortAvalaible
 
 matplotlib.use('Qt5Agg')
 
-
-
-
 ################################################################
 #   THREADING
 ################################################################
 
-class Work(QThread):
-	change_value = pyqtSignal(int)
-	finished = pyqtSignal()
-	data = pyqtSignal(list)
-	timer = 1
-	def run(self):
-		cnt = 0
-		while cnt < 100:
-			cnt+=1
-			time.sleep(self.timer)
-			data = [random.randint(0,30) for _ in range(10)]
-			self.data.emit(data)
-			self.change_value.emit(cnt)
-		self.finished.emit()
-
 class MyThread(QThread):
-	progress = pyqtSignal(int,str)
+	progress = pyqtSignal(int,list)
 	finished = pyqtSignal()
 	def __init__(self, RADAR, ARD):
 		QThread.__init__(self, None)
-		self.timer = 0.1
 		self.step   = 10
-		self.dprogress = int(100/self.step)
+		self.dprogress = 100/self.step
 		self.RADAR = RADAR
 		self.ARD = ARD
 		self.delta = int(self.ARD.maximum/self.step)
-		self.RADAR.setStartDis(startD)
-		self.RADAR.setStopDis(stopD)
+		self.RADAR.setStartDis(0)
+		self.RADAR.setStopDis(10)
 
 	def setValue(self, startD = None, stopD = None, step = None):
 		if self.RADAR.ready:
@@ -67,25 +48,49 @@ class MyThread(QThread):
 				self.RADAR.setStopDis(stopD)
 			if step   != None:
 				self.step   = step
-				self.dprogress = int(100/self.step)
-				self.delta = int(self.ARD.maximum/self.step)
-
-	def doMove(self):
-		print("move")
 
 	def getData(self):
-		if self.RADAR.ready and self.ARD.ready:
+		if self.RADAR.ready:
 			return self.RADAR.getData()
-		elif not self.ARD.ready:
-			return self.ARD.args
 		elif not self.RADAR.ready:
-			return self.RADAR.lastConn
+			return self.RADAR.lastConn[0].split(",")
 
 	def run(self):
 		pgr = 0
-		for i in range(1,self.ARD.maximum,self.step):
-			self.progress.emit(i,str(i))
-		self.finished.emit()
+
+		if self.step>1 and self.ARD.ready and self.RADAR.ready:
+			step = self.step-1
+			self.ARD.getMaximum() # this put right here to prevent lag while connecting to arduino
+			self.dprogress = 100/step
+			self.delta = math.ceil(self.ARD.maximum/step)
+			i = 0
+			msg = "DATA,MOVE,0"
+			for r in range(0,self.ARD.maximum,self.delta):
+				i+=1
+
+				if msg.split(",")[1] == "MOVE":
+					data = self.getData()
+				elif msg.split(",")[0] == "ERROR":
+					data = msg.split(",")
+
+				msg = self.ARD.doMove(1,self.delta)
+				
+				pgr += self.dprogress
+				self.progress.emit(pgr,data)
+			r = self.ARD.maximum
+
+			if msg.split(",")[1] == "MOVE":
+				data = self.getData()
+			elif msg.split(",")[0] == "ERROR":
+				data = msg.split(",")
+
+			self.progress.emit(100,data)
+			self.finished.emit()
+		elif (self.step==1 or not self.ARD.ready) and self.RADAR.ready:	
+			data = self.getData()
+			self.progress.emit(100,data)
+			self.finished.emit()
+
 
 ################################################################
 #   PLOTING
@@ -137,7 +142,7 @@ class Ui(QtWidgets.QMainWindow):
 		self.stopF = 5300
 		self.bandW = 201
 		self.firstTime = True
-		self.data = []
+		self.boxData = []
 
 		self.ARD = Arduino()
 		self.RADAR = CMT()
@@ -151,14 +156,14 @@ class Ui(QtWidgets.QMainWindow):
 		self.btnRADAR.clicked.connect(self.setupRadar)
 		self.btnARD.clicked.connect(self.setupArduino)
 		self.btnGetData.clicked.connect(self.startThreadData)
-		self.thread.progress.connect(self.prbrGetData.setValue)
+		self.thread.progress.connect(self.prbrProgressThread)
 		self.thread.finished.connect(self.showData)
 		self.timerCheckPort.timeout.connect(self.checkPort)
 		self.timerCheckPort.start(1000)
 
 	def setupRadar(self):
 		if self.btnRADAR.text() == "Connect":
-			conn = self.RADAR.connect()
+			conn = self.RADAR.connect(5000)
 			if self.RADAR.ready:
 				self.RADAR.setCalcFormat("DRLO")
 				self.RADAR.setStartFreq(self.inputStartF.text())
@@ -172,14 +177,13 @@ class Ui(QtWidgets.QMainWindow):
 				self.btnRADAR.setText("Connect")
 		
 		elif self.btnRADAR.text() == "Disconnect":
-			print("wierd")
 			self.RADAR.disconnect()
 			self.ledRADAR.setStyleSheet("background-color: rgb(255, 0, 0);border-radius:7px;")
 			self.btnRADAR.setText("Connect")    
 
-		if self.RADAR.ready and self.ARD.ready:
+		if self.RADAR.ready:
 			self.btnGetData.setEnabled(True)
-		elif not self.RADAR.ready or not self.ARD.ready:
+		elif not self.RADAR.ready:
 			self.btnGetData.setEnabled(False)
 
 	def setupArduino(self):
@@ -200,11 +204,6 @@ class Ui(QtWidgets.QMainWindow):
 				self.btnARD.setText("Connect")
 				self.ledARD.setStyleSheet("background-color: rgb(255, 0, 0);border-radius:7px;")
 
-		if self.RADAR.ready and self.ARD.ready:
-			self.btnGetData.setEnabled(True)
-		elif not self.RADAR.ready or not self.ARD.ready:
-			self.btnGetData.setEnabled(False)
-
 	def checkPort(self):
 		self.cmbxPort.clear()
 		x = getPortAvalaible()
@@ -218,47 +217,33 @@ class Ui(QtWidgets.QMainWindow):
 				self.btnARD.setText("Connect")
 				self.ledARD.setStyleSheet("background-color: rgb(255, 0, 0);border-radius:7px;")
 
+
 	def startThreadData(self):
 		print("BEGIN")
-		self.thread.setValue(self.inputStartD, self.inputStopD, self.inputStep )
+		self.boxData.clear()
+		self.thread.setValue(int(self.inputStartD.text()), int(self.inputStopD.text()), int(self.inputStep.text()) )
 		self.thread.start() 
+		
+		self.prbrGetData.setValue(0)
 		self.btnRADAR.setEnabled(False)
 		self.btnARD.setEnabled(False)
+		self.btnGetData.setEnabled(False)
+
+	def prbrProgressThread(self, x, data):
+		self.prbrGetData.setValue(x)
+		if len(data)==self.RADAR.point:
+			printArray(data,5," ")
+			self.boxData.append(data)
+		else: # todo ADD CALL ERROR
+			print(data)
 
 	def showData(self):
 		self.btnRADAR.setEnabled(True)
 		self.btnARD.setEnabled(True)
+		self.btnGetData.setEnabled(True)
+		if (len(self.boxData)==self.thread.step) and (len(self.boxData)>1):
+			self.graph.contourf(self.boxData)
 		print("DONE!")
-
-	def getRadarData(self):
-		if self.RADAR.ready == True:
-			gstartF = self.inputStartF.text()
-			gstopF = self.inputStopF.text()
-			gbandW = self.inputBandW.text()
-			if self.firstTime:
-				self.startF = gstartF
-				self.stopF = gstopF
-				self.bandW = gbandW
-				self.RADAR.setStartFreq(self.startF)
-				self.RADAR.setStopFreq(self.stopF)
-				self.RADAR.setNumberPoint(self.bandW)
-				self.firstTime = False
-
-			if self.startF!=gstartF:
-				self.RADAR.setStartFreq(self.startF)
-				self.startF = gstartF
-			if self.stopF!=gstopF:
-				self.RADAR.setStartFreq(self.stopF)
-				self.stopF = gstopF
-			if self.bandW!=gbandW:
-				self.RADAR.setStartFreq(self.bandW)
-				self.bandW = bandW
-			data = self.manipulateData()
-			return data
-
-	def manipulateData(self):
-		data = np.random.rand(100, int(self.bandW))
-		return data
 			
 if __name__ == "__main__":
 	app = QtWidgets.QApplication(sys.argv)

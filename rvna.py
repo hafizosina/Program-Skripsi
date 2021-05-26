@@ -73,6 +73,7 @@ class CMT(object):
 	def setNumberPoint(self, point):
 		if self.ready:
 			self.CMT.write_ascii_values(f'SENS:SWE:POIN {point}\n',self.values)  #Number of points
+			self.point = int(point)
 
 	def setCalcFormat(self, form): 
 		if self.ready:

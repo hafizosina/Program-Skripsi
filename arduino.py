@@ -29,7 +29,7 @@ class Arduino:
 			self.args = 'Connected'
 			self.ready = self.ser.is_open
 			msg = self.getData()
-			self.maximum = str(self.sendAndGetDataOnly("MAX?"))
+			# self.maximum = int(self.sendAndGetDataOnly("MAX?"))
 			return "CONN, "+msg
 
 		except serial.SerialException as e:
@@ -127,9 +127,9 @@ class Arduino:
 			#  This will wait for arduino respon.
 			return self.getData()
 
-
-
-
+	def getMaximum(self):
+		self.maximum = int(self.sendAndGetDataOnly("MAX?"))
+		return self.maximum
 
 if __name__ =="__main__":
 	ard = Arduino()
